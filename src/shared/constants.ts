@@ -1,0 +1,48 @@
+/**
+ * Electron Updater Constants
+ */
+
+export const PLUGIN_VERSION = '0.0.1';
+
+export const DEFAULT_CONFIG = {
+  appReadyTimeout: 10000,
+  responseTimeout: 20,
+  autoUpdate: true,
+  autoDeleteFailed: true,
+  autoDeletePrevious: true,
+  resetWhenUpdate: true,
+  updateUrl: 'https://plugin.capgo.app/updates',
+  channelUrl: 'https://plugin.capgo.app/channel_self',
+  statsUrl: 'https://plugin.capgo.app/stats',
+  directUpdate: false as const,
+  allowModifyUrl: false,
+  allowModifyAppId: false,
+  allowManualBundleError: false,
+  persistCustomId: false,
+  persistModifyUrl: false,
+  keepUrlPathAfterReload: false,
+  disableJSLogging: false,
+  debugMenu: false,
+  periodCheckDelay: 0,
+} as const;
+
+export const BUILTIN_BUNDLE_ID = 'builtin';
+
+export const BUNDLES_DIR = 'capgo-bundles';
+export const MANIFEST_FILE = 'manifest.json';
+export const STORAGE_FILE = 'electron-updater-storage.json';
+
+export const MIN_PERIOD_CHECK_DELAY = 600; // 10 minutes in seconds
+
+export const DEBUG_MENU_SHORTCUT = 'CommandOrControl+Shift+D';
+
+export const STATS_EVENTS = {
+  NO_NEW: 'noNew',
+  NEW_AVAILABLE: 'newAvailable',
+  DOWNLOAD_START: 'downloadStart',
+  DOWNLOAD_COMPLETE: 'downloadComplete',
+  DOWNLOAD_FAILED: 'downloadFailed',
+  UPDATE_SUCCESS: 'updateSuccess',
+  UPDATE_FAILED: 'updateFailed',
+  ROLLBACK: 'rollback',
+} as const;
