@@ -1,6 +1,33 @@
-# @capgo/electron-updater
+# Electron Updater
+
+<a href="https://capgo.app/"><img src='https://raw.githubusercontent.com/Cap-go/capgo/main/assets/capgo_banner.png' alt='Capgo - Instant updates for capacitor'/></a>
+
+[![Discord](https://badgen.net/badge/icon/discord?icon=discord&label)](https://discord.com/invite/VnYRvBfgA6)
+<a href="https://discord.com/invite/VnYRvBfgA6"><img src="https://img.shields.io/discord/912707985829163099?color=%237289DA&label=Discord" alt="Discord"></a>
+[![npm](https://img.shields.io/npm/dm/@capgo/electron-updater)](https://www.npmjs.com/package/@capgo/electron-updater)
+[![GitHub latest commit](https://badgen.net/github/last-commit/Cap-go/electron-updater/main)](https://GitHub.com/Cap-go/electron-updater/commit/)
+[![https://good-labs.github.io/greater-good-affirmation/assets/images/badge.svg](https://good-labs.github.io/greater-good-affirmation/assets/images/badge.svg)](https://good-labs.github.io/greater-good-affirmation)
+
+<div align="center">
+  <h2><a href="https://capgo.app/?ref=plugin_electron_updater"> Get Instant updates for your App with Capgo</a></h2>
+  <h2><a href="https://capgo.app/consulting/?ref=plugin_electron_updater"> Missing a feature? We'll build the plugin for you</a></h2>
+</div>
 
 OTA (Over-The-Air) updates for Electron applications. 100% feature parity with [@capgo/capacitor-updater](https://github.com/Cap-go/capacitor-updater).
+
+Open-source Alternative to Electron's built-in updater with live update capabilities.
+
+## Why Electron Updater?
+
+Electron's built-in auto-updater requires shipping a full new binary for every update. This plugin solves that by:
+
+- **Instant updates** - Push JavaScript/HTML/CSS updates directly to users without rebuilding the entire app
+- **Delta updates** - Only download changed files, making updates ultra-fast
+- **Rollback protection** - Automatically revert broken updates to keep your app stable
+- **Open source** - Self-host or use Capgo Cloud, with full control over your update infrastructure
+- **Feature parity** - Same API and capabilities as capacitor-updater
+
+Perfect for fixing bugs immediately, A/B testing features, and maintaining control over your release schedule.
 
 ## Features
 
@@ -272,12 +299,14 @@ Access with `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac) to:
 | Storage | Native filesystem | userData directory |
 | Device ID Storage | Keychain/Keystore | safeStorage |
 
+## Documentation
+
+Full documentation is available at [capgo.app/docs](https://capgo.app/docs/).
+
+## Community
+
+Join the [discord](https://discord.gg/VnYRvBfgA6) to get help.
+
 ## License
 
-MPL-2.0
-
-## Links
-
-- [Capgo](https://capgo.app) - Update service
-- [Documentation](https://capgo.app/docs)
-- [GitHub](https://github.com/Cap-go/electron-updater)
+Mozilla Public License Version 2.0. See [LICENSE](LICENSE) for details.
