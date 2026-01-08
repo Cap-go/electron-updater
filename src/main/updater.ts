@@ -4,6 +4,7 @@
  */
 
 import { app, BrowserWindow } from 'electron';
+import * as os from 'os';
 import type {
   ElectronUpdaterConfig,
   BundleInfo,
@@ -52,6 +53,24 @@ import { ChannelManager } from './channel-manager';
 import { StatsManager } from './stats';
 import { DeviceManager } from './device';
 import { DebugMenu } from './debug-menu';
+
+const KEY_ID_LENGTH = 20;
+
+interface LatestRequestPayload {
+  platform: string;
+  device_id: string;
+  app_id: string;
+  custom_id?: string | null;
+  version_build: string;
+  version_code: string;
+  version_os: string;
+  version_name: string;
+  plugin_version: string;
+  is_emulator: boolean;
+  is_prod: boolean;
+  defaultChannel?: string;
+  key_id?: string;
+}
 
 export class ElectronUpdater {
   private config: Required<ElectronUpdaterConfig>;
@@ -174,7 +193,9 @@ export class ElectronUpdater {
       this.config.appId,
       this.storage.getDeviceId(),
       PLUGIN_VERSION,
+      this.config.version,
       this.config.defaultChannel || undefined,
+      this.generateKeyId(this.crypto.getPublicKey()),
       this.config.responseTimeout * 1000
     );
 
@@ -185,6 +206,9 @@ export class ElectronUpdater {
       this.config.appId,
       this.storage.getDeviceId(),
       PLUGIN_VERSION,
+      this.config.version,
+      this.config.defaultChannel || undefined,
+      this.generateKeyId(this.crypto.getPublicKey()),
       this.config.responseTimeout * 1000
     );
 
@@ -370,8 +394,6 @@ export class ElectronUpdater {
    * Download a bundle
    */
   async download(options: DownloadOptions): Promise<BundleInfo> {
-    await this.statsManager.sendDownloadStart(options.version);
-
     try {
       const bundle = await this.downloadManager.downloadBundle(options, (event: DownloadEvent) => {
         this.eventEmitter.emit('download', event);
@@ -426,11 +448,7 @@ export class ElectronUpdater {
           'App ready timeout'
         );
 
-        const rolledBackBundle = await this.bundleManager.rollback();
-
         this.eventEmitter.emit('updateFailed', { bundle: current.bundle });
-
-        await this.statsManager.sendRollback(current.bundle.version, rolledBackBundle.version);
 
         // Reload with rolled back bundle
         const newPath = this.bundleManager.getCurrentBundlePath();
@@ -512,24 +530,25 @@ export class ElectronUpdater {
 
     const url = new URL(this.config.updateUrl);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'cap_app_id': this.config.appId,
-      'cap_device_id': this.storage.getDeviceId(),
-      'cap_plugin_version': PLUGIN_VERSION,
-      'cap_platform': 'electron',
-      'cap_version_name': current.bundle.version,
-      'cap_version_build': this.config.version,
-    };
-
-    if (channel) {
-      headers['cap_channel'] = channel;
-    }
-
     const customId = this.storage.getCustomId();
-    if (customId) {
-      headers['cap_custom_id'] = customId;
-    }
+    const publicKey = this.crypto.getPublicKey();
+    const keyId = this.generateKeyId(publicKey);
+
+    const payload: LatestRequestPayload = {
+      platform: 'android', // note: currently electron or windows is not supported by capgo backend.
+      device_id: this.storage.getDeviceId(),
+      app_id: this.config.appId,
+      custom_id: customId,
+      version_build: this.config.version,
+      version_code: app.getVersion(),
+      version_os: os.release(),
+      version_name: current.bundle.version,
+      plugin_version: PLUGIN_VERSION,
+      is_emulator: false,
+      is_prod: app.isPackaged,
+      defaultChannel: channel ?? this.config.defaultChannel,
+      key_id: keyId,
+    };
 
     try {
       const controller = new AbortController();
@@ -540,11 +559,11 @@ export class ElectronUpdater {
 
       const response = await fetch(url.toString(), {
         method: 'POST',
-        headers,
-        body: JSON.stringify({
-          version: current.bundle.version,
-          platform: 'electron',
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': this.buildUserAgent(),
+        },
+        body: JSON.stringify(payload),
         signal: controller.signal,
       });
 
@@ -556,13 +575,6 @@ export class ElectronUpdater {
 
       const data = (await response.json()) as LatestVersion;
 
-      // Track stats
-      if (data.error === 'no_new_version_available') {
-        await this.statsManager.sendNoNewVersion(current.bundle.version);
-      } else if (data.version) {
-        await this.statsManager.sendNewVersionAvailable(data.version, current.bundle.version);
-      }
-
       return data;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -571,6 +583,24 @@ export class ElectronUpdater {
         error: message,
       };
     }
+  }
+
+  private generateKeyId(publicKey: string | null): string | undefined {
+    if (!publicKey) return undefined;
+
+    const cleaned = publicKey
+      .replace(/-----BEGIN [^-]+-----/g, '')
+      .replace(/-----END [^-]+-----/g, '')
+      .replace(/\s+/g, '');
+
+    if (!cleaned.length) return undefined;
+
+    return cleaned.slice(0, KEY_ID_LENGTH);
+  }
+
+  private buildUserAgent(): string {
+    const appId = this.config.appId || 'missing-app-id';
+    return `CapacitorUpdater/${PLUGIN_VERSION} (${appId}) electron/${os.release()}`;
   }
 
   /**

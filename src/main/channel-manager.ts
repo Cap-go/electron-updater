@@ -1,8 +1,5 @@
-/**
- * Channel Manager
- * Handles channel operations and communication with server
- */
-
+import { app } from 'electron';
+import * as os from 'os';
 import type {
   SetChannelOptions,
   UnsetChannelOptions,
@@ -17,10 +14,13 @@ export class ChannelManager {
   private storage: StorageManager;
   private channelUrl: string;
   private defaultChannel?: string;
+  private versionBuild: string;
+  private keyId?: string;
   private appId: string;
   private deviceId: string;
   private pluginVersion: string;
   private timeout: number;
+  private userAgent: string;
 
   constructor(
     storage: StorageManager,
@@ -28,7 +28,9 @@ export class ChannelManager {
     appId: string,
     deviceId: string,
     pluginVersion: string,
+    versionBuild: string,
     defaultChannel?: string,
+    keyId?: string,
     timeout: number = 20000
   ) {
     this.storage = storage;
@@ -36,8 +38,11 @@ export class ChannelManager {
     this.appId = appId;
     this.deviceId = deviceId;
     this.pluginVersion = pluginVersion;
+    this.versionBuild = versionBuild;
+    this.keyId = keyId;
     this.defaultChannel = defaultChannel;
     this.timeout = timeout;
+    this.userAgent = `CapacitorUpdater/${this.pluginVersion} (${this.appId || 'missing-app-id'}) electron/${os.release()}`;
   }
 
   setChannelUrl(url: string): void {
@@ -155,27 +160,34 @@ export class ChannelManager {
   ): Promise<Record<string, unknown>> {
     const url = new URL(this.channelUrl);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'cap_app_id': this.appId,
-      'cap_device_id': this.deviceId,
-      'cap_plugin_version': this.pluginVersion,
-      'cap_platform': 'electron',
-    };
-
-    const customId = this.storage.getCustomId();
-    if (customId) {
-      headers['cap_custom_id'] = customId;
-    }
+    const info = this.buildInfoPayload();
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(url.toString(), {
+      let finalUrl = url.toString();
+      let fetchBody: string | undefined;
+
+      if (method === 'GET') {
+        const params = new URLSearchParams();
+        Object.entries({ ...info, ...body }).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            params.append(key, String(value));
+          }
+        });
+        finalUrl = `${url.toString()}?${params.toString()}`;
+      } else {
+        fetchBody = JSON.stringify({ ...info, ...body });
+      }
+
+      const response = await fetch(finalUrl, {
         method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': this.userAgent,
+        },
+        body: fetchBody,
         signal: controller.signal,
       });
 
@@ -190,5 +202,26 @@ export class ChannelManager {
       clearTimeout(timeoutId);
       throw error;
     }
+  }
+
+  private buildInfoPayload() {
+    const currentBundleId = this.storage.getCurrentBundleId();
+    const bundle = this.storage.getBundle(currentBundleId);
+
+    return {
+      platform: 'android', // note: currently electron or windows is not supported by capgo backend.
+      device_id: this.deviceId,
+      app_id: this.appId,
+      custom_id: this.storage.getCustomId() ?? undefined,
+      version_build: this.versionBuild,
+      version_code: app.getVersion(),
+      version_os: os.release(),
+      version_name: bundle?.version ?? '',
+      plugin_version: this.pluginVersion,
+      is_emulator: false,
+      is_prod: app.isPackaged,
+      defaultChannel: this.storage.getChannel() ?? this.defaultChannel,
+      key_id: this.keyId,
+    };
   }
 }

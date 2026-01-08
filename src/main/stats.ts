@@ -1,8 +1,5 @@
-/**
- * Stats Manager
- * Handles statistics reporting to server
- */
-
+import { app } from 'electron';
+import * as os from 'os';
 import type { StorageManager } from './storage';
 import { STATS_EVENTS } from '../shared/constants';
 
@@ -22,9 +19,13 @@ export class StatsManager {
   private appId: string;
   private deviceId: string;
   private pluginVersion: string;
-  private platform: string = 'electron';
+  private versionBuild: string;
+  private keyId?: string;
+  private defaultChannel?: string;
+  private platform: string = 'android'; // note: currently electron or windows is not supported by capgo backend.
   private timeout: number;
   private enabled: boolean = true;
+  private userAgent: string;
 
   constructor(
     storage: StorageManager,
@@ -32,6 +33,9 @@ export class StatsManager {
     appId: string,
     deviceId: string,
     pluginVersion: string,
+    versionBuild: string,
+    defaultChannel?: string,
+    keyId?: string,
     timeout: number = 20000
   ) {
     this.storage = storage;
@@ -39,7 +43,11 @@ export class StatsManager {
     this.appId = appId;
     this.deviceId = deviceId;
     this.pluginVersion = pluginVersion;
+    this.versionBuild = versionBuild;
+    this.keyId = keyId;
+    this.defaultChannel = defaultChannel;
     this.timeout = timeout;
+    this.userAgent = `CapacitorUpdater/${this.pluginVersion} (${this.appId || 'missing-app-id'}) electron/${os.release()}`;
 
     // Disable if URL is empty
     this.enabled = statsUrl.length > 0;
@@ -66,37 +74,6 @@ export class StatsManager {
       // Stats failures should not affect app operation
       console.warn('Failed to send stats:', error);
     }
-  }
-
-  /**
-   * Send no new version event
-   */
-  async sendNoNewVersion(currentVersion: string): Promise<void> {
-    await this.sendEvent({
-      event: STATS_EVENTS.NO_NEW,
-      version: currentVersion,
-    });
-  }
-
-  /**
-   * Send new version available event
-   */
-  async sendNewVersionAvailable(newVersion: string, currentVersion: string): Promise<void> {
-    await this.sendEvent({
-      event: STATS_EVENTS.NEW_AVAILABLE,
-      version: newVersion,
-      oldVersion: currentVersion,
-    });
-  }
-
-  /**
-   * Send download start event
-   */
-  async sendDownloadStart(version: string): Promise<void> {
-    await this.sendEvent({
-      event: STATS_EVENTS.DOWNLOAD_START,
-      version,
-    });
   }
 
   /**
@@ -145,39 +122,13 @@ export class StatsManager {
   }
 
   /**
-   * Send rollback event
-   */
-  async sendRollback(fromVersion: string, toVersion: string): Promise<void> {
-    await this.sendEvent({
-      event: STATS_EVENTS.ROLLBACK,
-      version: toVersion,
-      oldVersion: fromVersion,
-    });
-  }
-
-  /**
    * Make HTTP request to stats API
    */
   private async makeRequest(payload: StatsPayload): Promise<void> {
     const url = new URL(this.statsUrl);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'cap_app_id': this.appId,
-      'cap_device_id': this.deviceId,
-      'cap_plugin_version': this.pluginVersion,
-      'cap_platform': this.platform,
-    };
-
-    const customId = this.storage.getCustomId();
-    if (customId) {
-      headers['cap_custom_id'] = customId;
-    }
-
     const channel = this.storage.getChannel();
-    if (channel) {
-      headers['cap_channel'] = channel;
-    }
+    const info = this.buildInfoPayload(payload.version ?? this.getCurrentBundleVersion(), channel ?? this.defaultChannel);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -185,8 +136,18 @@ export class StatsManager {
     try {
       const response = await fetch(url.toString(), {
         method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': this.userAgent,
+        },
+        body: JSON.stringify({
+          ...info,
+          action: payload.event,
+          version_name: info.version_name,
+          old_version_name: payload.oldVersion ?? '',
+          bundle_id: payload.bundleId,
+          message: payload.message,
+        }),
         signal: controller.signal,
       });
 
@@ -199,5 +160,29 @@ export class StatsManager {
       clearTimeout(timeoutId);
       throw error;
     }
+  }
+
+  private getCurrentBundleVersion(): string {
+    const currentId = this.storage.getCurrentBundleId();
+    const bundle = this.storage.getBundle(currentId);
+    return bundle?.version ?? '';
+  }
+
+  private buildInfoPayload(versionName: string, channel?: string | null) {
+    return {
+      platform: this.platform,
+      device_id: this.deviceId,
+      app_id: this.appId,
+      custom_id: this.storage.getCustomId() ?? undefined,
+      version_build: this.versionBuild,
+      version_code: app.getVersion(),
+      version_os: os.release(),
+      version_name: versionName,
+      plugin_version: this.pluginVersion,
+      is_emulator: false,
+      is_prod: app.isPackaged,
+      defaultChannel: channel ?? this.defaultChannel,
+      key_id: this.keyId,
+    };
   }
 }

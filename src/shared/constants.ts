@@ -37,12 +37,8 @@ export const MIN_PERIOD_CHECK_DELAY = 600; // 10 minutes in seconds
 export const DEBUG_MENU_SHORTCUT = 'CommandOrControl+Shift+D';
 
 export const STATS_EVENTS = {
-  NO_NEW: 'noNew',
-  NEW_AVAILABLE: 'newAvailable',
-  DOWNLOAD_START: 'downloadStart',
-  DOWNLOAD_COMPLETE: 'downloadComplete',
-  DOWNLOAD_FAILED: 'downloadFailed',
-  UPDATE_SUCCESS: 'updateSuccess',
-  UPDATE_FAILED: 'updateFailed',
-  ROLLBACK: 'rollback',
+  DOWNLOAD_COMPLETE: 'download_complete',
+  DOWNLOAD_FAILED: 'download_fail',
+  UPDATE_SUCCESS: 'set',
+  UPDATE_FAILED: 'set_fail',
 } as const;
