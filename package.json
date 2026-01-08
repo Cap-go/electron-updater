@@ -1,6 +1,6 @@
 {
   "name": "@capgo/electron-updater",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "OTA updates for Electron applications - 100% feature parity with capacitor-updater",
   "main": "dist/main/index.js",
   "types": "dist/main/index.d.ts",
