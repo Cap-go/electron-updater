@@ -541,7 +541,7 @@ export class ElectronUpdater {
     const keyId = this.generateKeyId(publicKey);
 
     const payload: LatestRequestPayload = {
-      platform: 'android', // note: currently electron or windows is not supported by capgo backend.
+      platform: 'electron',
       device_id: this.storage.getDeviceId(),
       app_id: this.config.appId,
       custom_id: customId,
