@@ -26,8 +26,12 @@
  *   setupIPCHandlers(updater);
  *   setupEventForwarding(updater, mainWindow);
  *
- *   // Load the current bundle
+ *   // Load the current bundle (file-based)
  *   await mainWindow.loadFile(updater.getCurrentBundlePath());
+ *
+ *   // Or with a custom protocol (configure loadUrl in options):
+ *   // const updater = new ElectronUpdater({ loadUrl: 'app://localhost', ... });
+ *   // await mainWindow.loadURL('app://localhost');
  * });
  * ```
  */

@@ -124,6 +124,7 @@ export class ElectronUpdater {
       allowManualBundleError: config.allowManualBundleError ?? DEFAULT_CONFIG.allowManualBundleError,
       persistCustomId: config.persistCustomId ?? DEFAULT_CONFIG.persistCustomId,
       persistModifyUrl: config.persistModifyUrl ?? DEFAULT_CONFIG.persistModifyUrl,
+      loadUrl: config.loadUrl ?? '',
       keepUrlPathAfterReload: config.keepUrlPathAfterReload ?? DEFAULT_CONFIG.keepUrlPathAfterReload,
       disableJSLogging: config.disableJSLogging ?? DEFAULT_CONFIG.disableJSLogging,
       debugMenu: config.debugMenu ?? DEFAULT_CONFIG.debugMenu,
@@ -457,8 +458,12 @@ export class ElectronUpdater {
         this.eventEmitter.emit('updateFailed', { bundle: current.bundle });
 
         // Reload with rolled back bundle
-        const newPath = this.bundleManager.getCurrentBundlePath();
-        this.mainWindow?.loadFile(newPath);
+        if (this.config.loadUrl) {
+          this.mainWindow?.loadURL(this.config.loadUrl);
+        } else {
+          const newPath = this.bundleManager.getCurrentBundlePath();
+          this.mainWindow?.loadFile(newPath);
+        }
       }
     }, this.config.appReadyTimeout);
 
@@ -466,7 +471,11 @@ export class ElectronUpdater {
     this.eventEmitter.emit('appReloaded', undefined);
 
     // Load the bundle
-    await this.mainWindow.loadFile(bundlePath);
+    if (this.config.loadUrl) {
+      await this.mainWindow.loadURL(this.config.loadUrl);
+    } else {
+      await this.mainWindow.loadFile(bundlePath);
+    }
   }
 
   /**

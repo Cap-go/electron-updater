@@ -405,6 +405,8 @@ export interface ElectronUpdaterConfig {
   persistModifyUrl?: boolean;
 
   // UX
+  /** URL to load instead of using loadFile (e.g., 'app://localhost' for custom protocols) */
+  loadUrl?: string;
   /** Preserve URL path on reload (default: false) */
   keepUrlPathAfterReload?: boolean;
   /** Disable console logging (default: false) */
