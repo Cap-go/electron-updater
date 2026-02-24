@@ -215,7 +215,7 @@ export class ChannelManager {
     const bundle = this.storage.getBundle(currentBundleId);
 
     return {
-      platform: 'android', // note: currently electron or windows is not supported by capgo backend.
+      platform: 'electron',
       device_id: this.deviceId,
       app_id: this.appId,
       custom_id: this.storage.getCustomId() ?? undefined,
