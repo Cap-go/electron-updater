@@ -28,7 +28,7 @@ export class StatsManager {
   private versionBuild: string;
   private keyId?: string;
   private defaultChannel?: string;
-  private platform: string = 'android'; // note: currently electron or windows is not supported by capgo backend.
+  private platform: string = 'electron';
   private timeout: number;
   private enabled: boolean = true;
   private userAgent: string;
