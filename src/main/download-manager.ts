@@ -55,8 +55,9 @@ export class DownloadManager {
       return false;
     }
 
-    // Check for path traversal patterns
-    if (filePath.includes('..')) {
+    // Check for path traversal patterns (.. as a path segment)
+    const segments = filePath.split(path.sep);
+    if (segments.some(segment => segment === '..')) {
       return false;
     }
 
