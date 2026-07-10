@@ -30,7 +30,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "changelog:ai": "node scripts/generate-ai-changelog.mjs"
   },
   "keywords": [
     "electron",
