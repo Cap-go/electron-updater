@@ -94,6 +94,7 @@ const RULES = [
 const CORDova_SPM_LINE =
   /\.product\s*\(\s*name\s*:\s*"Cordova"\s*,\s*package\s*:\s*"capacitor-swift-pm"\s*\)/;
 
+/** Read UTF-8 file contents; empty string if unreadable. */
 function readText(p) {
   try {
     return fs.readFileSync(p, "utf8");
@@ -102,6 +103,7 @@ function readText(p) {
   }
 }
 
+/** Return whether path exists. */
 function exists(p) {
   try {
     fs.accessSync(p);
@@ -111,6 +113,7 @@ function exists(p) {
   }
 }
 
+/** Parse CLI args; supports --dir and --pluginDir. */
 function parseArgs(argv) {
   const out = { dir: process.cwd() };
   for (let i = 2; i < argv.length; i++) {
@@ -123,6 +126,7 @@ function parseArgs(argv) {
   return out;
 }
 
+/** Recursively list files under rootDir matching extensions. */
 function walkFiles(rootDir, exts) {
   const out = [];
   const stack = [rootDir];
@@ -153,6 +157,7 @@ function walkFiles(rootDir, exts) {
   return out;
 }
 
+/** Native source directories to scan from capacitor package.json. */
 function collectScanRoots(pluginDir, pkg) {
   const cap = typeof pkg.capacitor === "object" && pkg.capacitor ? pkg.capacitor : {};
   const roots = [];
@@ -173,6 +178,7 @@ function collectScanRoots(pluginDir, pkg) {
   return roots;
 }
 
+/** Find rule pattern matches in a single file. */
 function scanFile(filePath, rule) {
   const ext = path.extname(filePath);
   if (!rule.exts.includes(ext)) return [];
