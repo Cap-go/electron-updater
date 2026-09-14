@@ -31,7 +31,8 @@
     "lint": "eslint src",
     "test": "vitest",
     "prepublishOnly": "npm run build",
-    "changelog:ai": "node scripts/generate-ai-changelog.mjs"
+    "changelog:ai": "node scripts/generate-ai-changelog.mjs",
+    "check:cap9-deprecated": "node scripts/check-cap9-deprecated.mjs"
   },
   "keywords": [
     "electron",
