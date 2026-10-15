@@ -247,7 +247,18 @@ export class BundleManager {
       if (!nextId) {
         throw new Error('No pending bundle to apply during reset');
       }
-      await this.set({ id: nextId });
+      const currentId = this.storage.getCurrentBundleId();
+      const lastSuccessful = this.storage.getLastSuccessfulBundleId();
+      if (lastSuccessful === currentId) {
+        this.storage.setLastSuccessfulBundleId(BUILTIN_BUNDLE_ID);
+      }
+      const previousAutoDelete = this.autoDeletePrevious;
+      this.autoDeletePrevious = false;
+      try {
+        await this.set({ id: nextId });
+      } finally {
+        this.autoDeletePrevious = previousAutoDelete;
+      }
       return;
     }
 

@@ -108,6 +108,8 @@ export class ElectronUpdater {
   private builtinPath: string = '';
   private reloadGeneration: number = 0;
   private expectedNotifyGeneration: number = 0;
+  private launchCheckConsumed: boolean = false;
+  private reloadDepth: number = 0;
   private nativeUpdatePromptManager: NativeUpdatePromptManager | null = null;
 
   constructor(config: ElectronUpdaterConfig = {}) {
@@ -183,20 +185,13 @@ export class ElectronUpdater {
     const runtime = this.storage.getAutoUpdateRuntime() ?? {};
     const currentBuild = app.getVersion();
     const isFreshNativeInstall = runtime.storedNativeBuild !== currentBuild;
-    const isColdStart = !runtime.onLaunchCheckConsumed;
+    const isColdStart = !this.launchCheckConsumed;
+    this.launchCheckConsumed = true;
 
-    if (isColdStart) {
-      this.storage.setAutoUpdateRuntime({
-        ...runtime,
-        onLaunchCheckConsumed: true,
-        storedNativeBuild: currentBuild,
-      });
-      void this.storage.save();
-    } else if (isFreshNativeInstall) {
+    if (isFreshNativeInstall) {
       this.storage.setAutoUpdateRuntime({
         ...runtime,
         storedNativeBuild: currentBuild,
-        onLaunchCheckConsumed: true,
       });
       void this.storage.save();
     }
@@ -375,13 +370,16 @@ export class ElectronUpdater {
       const latest = await this.getLatest();
 
       const current = await this.current();
+      const hasUpdatePayload = Boolean(latest.url && latest.version);
       const checkKind: UpdateResponseKind =
         latest.kind ??
         (latest.error === 'no_new_version_available'
           ? 'up_to_date'
           : latest.error
             ? 'failed'
-            : 'up_to_date');
+            : hasUpdatePayload
+              ? 'blocked'
+              : 'up_to_date');
 
       this.eventEmitter.emitUpdaterEvent({
         type: 'updateCheckResult',
@@ -395,7 +393,10 @@ export class ElectronUpdater {
         },
       });
 
-      if (latest.error === 'no_new_version_available' || checkKind === 'up_to_date') {
+      if (
+        (latest.error === 'no_new_version_available' || checkKind === 'up_to_date') &&
+        !hasUpdatePayload
+      ) {
         this.eventEmitter.emitUpdaterEvent({
           type: 'noNeedUpdate',
           data: { bundle: current.bundle },
@@ -583,8 +584,17 @@ export class ElectronUpdater {
   async reload(): Promise<void> {
     if (!this.mainWindow) return;
 
-    if (this.delayManager.areConditionsSatisfied()) {
-      await this.checkAndApplyPendingUpdate();
+    if (this.reloadDepth === 0 && this.delayManager.areConditionsSatisfied()) {
+      const pending = await this.bundleManager.getNextBundle();
+      if (pending) {
+        this.reloadDepth += 1;
+        try {
+          await this.set({ id: pending.id });
+          return;
+        } finally {
+          this.reloadDepth -= 1;
+        }
+      }
     }
 
     const bundlePath = this.bundleManager.getCurrentBundlePath();
@@ -593,6 +603,10 @@ export class ElectronUpdater {
     this.appReadyReceived = false;
     this.expectedNotifyGeneration = ++this.reloadGeneration;
 
+    if (this.appReadyTimeout) {
+      clearTimeout(this.appReadyTimeout);
+    }
+
     this.appReadyTimeout = setTimeout(async () => {
       if (!this.appReadyReceived) {
         if (!this.config.disableJSLogging) {
@@ -600,6 +614,9 @@ export class ElectronUpdater {
         }
 
         const failedBundle = (await this.current()).bundle;
+        this.reloadGeneration += 1;
+        this.expectedNotifyGeneration = this.reloadGeneration;
+
         await this.statsManager.sendUpdateFailed(
           failedBundle.version,
           failedBundle.id,
@@ -607,8 +624,6 @@ export class ElectronUpdater {
         );
 
         const rolledBack = await this.bundleManager.rollback();
-        this.reloadGeneration += 1;
-        this.expectedNotifyGeneration = this.reloadGeneration;
 
         this.eventEmitter.emitUpdaterEvent({
           type: 'updateFailed',
@@ -826,7 +841,7 @@ export class ElectronUpdater {
   async unsetChannel(options?: UnsetChannelOptions): Promise<void> {
     await this.channelManager.unsetChannel(options);
 
-    if (options?.triggerAutoUpdate && this.config.autoUpdate) {
+    if (options?.triggerAutoUpdate && isAutoUpdateChecksEnabled(this.config.autoUpdate)) {
       this.checkForUpdates();
     }
   }

@@ -111,11 +111,17 @@ export class StatsManager {
     message: string,
     metadata?: { statusCode?: number; error?: string }
   ): Promise<void> {
-    const detail = metadata?.error ? `${message} (${metadata.error})` : message;
+    const parts = [message];
+    if (metadata?.statusCode !== undefined) {
+      parts.push(`status ${metadata.statusCode}`);
+    }
+    if (metadata?.error && metadata.error !== message) {
+      parts.push(metadata.error);
+    }
     await this.sendEvent({
       event: STATS_EVENTS.UPDATE_CHECK_ERROR,
       version: this.getCurrentBundleVersion(),
-      message: detail,
+      message: parts.join('; '),
     });
   }
 

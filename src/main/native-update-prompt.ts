@@ -55,7 +55,14 @@ export class NativeUpdatePromptManager {
     });
 
     if (result.response === 0 && storeUrl) {
-      await shell.openExternal(storeUrl);
+      try {
+        const parsed = new URL(storeUrl);
+        if (parsed.protocol === 'https:') {
+          await shell.openExternal(storeUrl);
+        }
+      } catch {
+        // Ignore malformed store URLs
+      }
     }
 
     this.storage.setNativeUpdatePromptShownAt(this.nativeVersion, Date.now());

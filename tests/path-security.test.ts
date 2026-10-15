@@ -29,6 +29,10 @@ describe('path-security', () => {
     it('accepts hex ids', () => {
       expect(() => assertSafeBundleId('abc123def456')).not.toThrow();
     });
+
+    it('rejects forward slashes in bundle ids', () => {
+      expect(() => assertSafeBundleId('../outside')).toThrow(/Invalid bundle id/);
+    });
   });
 
   describe('isHttpsToHttpRedirect', () => {

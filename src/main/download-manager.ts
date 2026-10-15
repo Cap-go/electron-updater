@@ -193,6 +193,11 @@ export class DownloadManager {
         if (path.isAbsolute(entry.fileName)) {
           throw new Error(`Zip entry has absolute path: ${entry.fileName}`);
         }
+
+        const mode = (entry as { mode?: number }).mode;
+        if (mode !== undefined && (mode & 0o170000) === 0o120000) {
+          throw new Error(`Zip entry is a symlink: ${entry.fileName}`);
+        }
       },
     });
   }
@@ -345,6 +350,17 @@ export class DownloadManager {
 
       // Ensure directory exists
       await fs.promises.mkdir(fileDir, { recursive: true });
+
+      try {
+        const existing = await fs.promises.lstat(filePath);
+        if (existing.isSymbolicLink()) {
+          throw new Error(`Manifest entry resolves to a symlink: ${entry.file_name}`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
 
       // Check if file already exists in cache (builtin bundle)
       // This implements caching similar to capacitor-updater

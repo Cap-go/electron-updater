@@ -32,8 +32,14 @@ export function isPathWithinRoot(filePath: string, allowedDir: string): boolean 
  * Reject bundle ids that would be unsafe on disk or ambiguous in storage.
  */
 export function assertSafeBundleId(bundleId: string): void {
-  if (!bundleId || bundleId === '.' || bundleId === '..' || bundleId.includes(path.sep)) {
+  if (!bundleId || bundleId === '.' || bundleId === '..' || /[/\\]/.test(bundleId)) {
     throw new Error(`Invalid bundle id: ${bundleId}`);
+  }
+}
+
+export function assertBundlePathWithinRoot(bundlePath: string, bundlesRoot: string): void {
+  if (!isPathWithinRoot(bundlePath, bundlesRoot)) {
+    throw new Error(`Bundle path escapes storage root: ${bundlePath}`);
   }
 }
 

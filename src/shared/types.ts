@@ -461,7 +461,7 @@ export interface ElectronUpdaterConfig {
   publicKey?: string;
   /** Allow HTTPS to HTTP redirects for updater network calls (default: false) */
   allowHttpsToHttpRedirect?: boolean;
-  /** Allow unsetChannel when allowSetDefaultChannel is false (default: true) */
+  /** When false, unsetChannel throws disabled_by_config (default: true) */
   allowSetDefaultChannel?: boolean;
 
   // Version Management

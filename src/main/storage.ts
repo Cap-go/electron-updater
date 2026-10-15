@@ -21,7 +21,7 @@ import type {
   UpdateFailedEvent,
   DelayConditionMode,
 } from '../shared/types';
-import { assertSafeBundleId } from './path-security';
+import { assertBundlePathWithinRoot, assertSafeBundleId } from './path-security';
 import { BUNDLES_DIR, STORAGE_FILE, BUILTIN_BUNDLE_ID } from '../shared/constants';
 
 export class StorageManager {
@@ -121,7 +121,9 @@ export class StorageManager {
 
   getBundlePath(bundleId: string): string {
     assertSafeBundleId(bundleId);
-    return path.join(this.bundlesPath, bundleId);
+    const bundlePath = path.join(this.bundlesPath, bundleId);
+    assertBundlePathWithinRoot(bundlePath, this.bundlesPath);
+    return bundlePath;
   }
 
   getManifest(): BundleManifest {
