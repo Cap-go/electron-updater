@@ -84,6 +84,11 @@ export class CryptoManager {
       const iv = Buffer.from(parts[0], 'base64');
       const encryptedAesKey = Buffer.from(parts[1], 'base64');
 
+      if (iv.length !== 16) {
+        console.error('Invalid session key: IV must be 16 bytes');
+        return null;
+      }
+
       // Decrypt AES key using RSA public key with PKCS1 padding
       // Note: In E2E encryption, the private key encrypts and public key decrypts
       const aesKey = crypto.publicDecrypt(
@@ -93,6 +98,11 @@ export class CryptoManager {
         },
         encryptedAesKey
       );
+
+      if (aesKey.length !== 16) {
+        console.error('Invalid session key: decrypted AES key must be 16 bytes');
+        return null;
+      }
 
       return { iv, aesKey };
     } catch (error) {
@@ -116,6 +126,10 @@ export class CryptoManager {
    */
   decryptContent(encryptedData: Buffer, sessionKey: DecryptedSessionKey): Buffer | null {
     try {
+      if (sessionKey.aesKey.length !== 16 || sessionKey.iv.length !== 16) {
+        console.error('AES decryption requires a 16 byte key and IV');
+        return null;
+      }
       const decipher = crypto.createDecipheriv('aes-128-cbc', sessionKey.aesKey, sessionKey.iv);
       const decrypted = Buffer.concat([decipher.update(encryptedData), decipher.final()]);
       return decrypted;

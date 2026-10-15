@@ -148,5 +148,9 @@ describe('Constants', () => {
     it('should have UPDATE_FAILED event', () => {
       expect(STATS_EVENTS.UPDATE_FAILED).toBe('set_fail');
     });
+
+    it('should have UPDATE_CHECK_ERROR event', () => {
+      expect(STATS_EVENTS.UPDATE_CHECK_ERROR).toBe('update_check_error');
+    });
   });
 });

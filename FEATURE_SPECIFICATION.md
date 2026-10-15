@@ -282,7 +282,9 @@ interface DelayCondition {
 ### Encryption
 - RSA encryption for session keys
 - AES encryption for bundle content
-- SHA256 checksums for verification
+- Encrypted bundles remain unreadable by Capgo (E2E v2)
+- SHA256 checksums for verification before unzip
+- HTTPS to HTTP redirects are blocked unless explicitly allowed
 
 ---
 

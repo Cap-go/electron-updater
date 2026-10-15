@@ -242,6 +242,15 @@ export class BundleManager {
    * Reset to builtin or last successful bundle
    */
   async reset(options?: ResetOptions): Promise<void> {
+    if (options?.usePendingBundle) {
+      const nextId = this.storage.getNextBundleId();
+      if (!nextId) {
+        throw new Error('No pending bundle to apply during reset');
+      }
+      await this.set({ id: nextId });
+      return;
+    }
+
     let targetId: string;
 
     if (options?.toLastSuccessful) {

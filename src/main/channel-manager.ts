@@ -27,6 +27,7 @@ export class ChannelManager {
   private pluginVersion: string;
   private timeout: number;
   private userAgent: string;
+  private allowSetDefaultChannel: boolean;
 
   constructor(
     storage: StorageManager,
@@ -37,7 +38,8 @@ export class ChannelManager {
     versionBuild: string,
     defaultChannel?: string,
     keyId?: string,
-    timeout: number = 20000
+    timeout: number = 20000,
+    allowSetDefaultChannel: boolean = true
   ) {
     this.storage = storage;
     this.channelUrl = channelUrl;
@@ -48,7 +50,12 @@ export class ChannelManager {
     this.keyId = keyId;
     this.defaultChannel = defaultChannel;
     this.timeout = timeout;
+    this.allowSetDefaultChannel = allowSetDefaultChannel;
     this.userAgent = `CapacitorUpdater/${this.pluginVersion} (${this.appId || 'missing-app-id'}) electron/${os.release()}`;
+  }
+
+  setAllowSetDefaultChannel(allow: boolean): void {
+    this.allowSetDefaultChannel = allow;
   }
 
   setChannelUrl(url: string): void {
@@ -93,6 +100,12 @@ export class ChannelManager {
    * Unset channel for this device
    */
   async unsetChannel(_options?: UnsetChannelOptions): Promise<void> {
+    if (!this.allowSetDefaultChannel) {
+      throw Object.assign(new Error('unsetChannel is disabled by configuration'), {
+        code: 'disabled_by_config',
+      });
+    }
+
     try {
       await this.makeRequest('POST', {
         action: 'unset',

@@ -105,6 +105,21 @@ export class StatsManager {
   }
 
   /**
+   * Failed background update check (network, timeout, non-2xx, unreadable payload).
+   */
+  async sendUpdateCheckError(
+    message: string,
+    metadata?: { statusCode?: number; error?: string }
+  ): Promise<void> {
+    const detail = metadata?.error ? `${message} (${metadata.error})` : message;
+    await this.sendEvent({
+      event: STATS_EVENTS.UPDATE_CHECK_ERROR,
+      version: this.getCurrentBundleVersion(),
+      message: detail,
+    });
+  }
+
+  /**
    * Send update success event
    */
   async sendUpdateSuccess(version: string, bundleId: string): Promise<void> {

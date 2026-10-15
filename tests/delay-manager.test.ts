@@ -9,14 +9,20 @@ import type { DelayCondition } from '../src/shared/types';
 // Create a mock StorageManager for testing
 function createMockStorage(initialConditions: DelayCondition[] = []): StorageManager {
   let conditions = [...initialConditions];
+  let mode: 'and' | 'or' = 'and';
 
   return {
     getDelayConditions: vi.fn(() => conditions),
     setDelayConditions: vi.fn((newConditions: DelayCondition[]) => {
       conditions = newConditions;
     }),
+    getDelayConditionMode: vi.fn(() => mode),
+    setDelayConditionMode: vi.fn((newMode: 'and' | 'or') => {
+      mode = newMode;
+    }),
     clearDelayConditions: vi.fn(() => {
       conditions = [];
+      mode = 'and';
     }),
     save: vi.fn().mockResolvedValue(undefined),
   } as unknown as StorageManager;
@@ -76,6 +82,25 @@ describe('DelayManager', () => {
 
   describe('areConditionsSatisfied', () => {
     it('should return true when no conditions exist', () => {
+      expect(delayManager.areConditionsSatisfied()).toBe(true);
+    });
+
+    it('should use OR mode when configured', async () => {
+      mockStorage = createMockStorage([
+        { kind: 'background' },
+        { kind: 'date', value: '2099-01-01T00:00:00.000Z' },
+      ]);
+      delayManager = new DelayManager(mockStorage, '1.0.0');
+      await delayManager.setMultiDelay({
+        delayConditions: [
+          { kind: 'background' },
+          { kind: 'date', value: '2099-01-01T00:00:00.000Z' },
+        ],
+        conditionMode: 'or',
+      });
+
+      delayManager.onBackground();
+
       expect(delayManager.areConditionsSatisfied()).toBe(true);
     });
 

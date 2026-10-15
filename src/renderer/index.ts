@@ -155,6 +155,11 @@ export interface EventDataMap {
   updateFailed: UpdateFailedEvent;
   appReloaded: void;
   appReady: AppReadyEvent;
+  updaterEvent: import('../shared/types').UpdaterEvent;
+  updateCheckResult: import('../shared/types').UpdateCheckResultEvent;
+  set: import('../shared/types').SetEvent;
+  setNext: import('../shared/types').SetNextEvent;
+  channelPrivate: import('../shared/types').ChannelPrivateEvent;
 }
 
 // Declare the global window interface

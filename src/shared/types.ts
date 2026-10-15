@@ -80,6 +80,8 @@ export interface ManifestEntry {
 // Update Types
 // ============================================================================
 
+export type UpdateResponseKind = 'up_to_date' | 'blocked' | 'failed';
+
 export interface LatestVersion {
   /** Latest version identifier */
   version: string;
@@ -97,10 +99,16 @@ export interface LatestVersion {
   sessionKey?: string;
   /** Error code (e.g., "no_new_version_available") */
   error?: string;
+  /** Classification for this response */
+  kind?: UpdateResponseKind;
+  /** HTTP status from the update server */
+  statusCode?: number;
   /** Current version on device */
   old?: string;
   /** File list for partial updates */
   manifest?: ManifestEntry[];
+  /** Optional store URL when a native update is required */
+  link?: string;
 }
 
 export interface GetLatestOptions {
@@ -121,6 +129,8 @@ export interface AppReadyResult {
 export interface ResetOptions {
   /** Reset to last successful bundle instead of builtin */
   toLastSuccessful?: boolean;
+  /** Apply the pending bundle from next() while resetting */
+  usePendingBundle?: boolean;
 }
 
 // ============================================================================
@@ -136,9 +146,16 @@ export interface DelayCondition {
   value?: string;
 }
 
+export type DelayConditionMode = 'and' | 'or';
+
 export interface MultiDelayConditions {
-  /** Array of delay conditions (all must be satisfied) */
+  /** Array of delay conditions */
   delayConditions: DelayCondition[];
+  /**
+   * How to combine multiple delay conditions.
+   * @default 'and'
+   */
+  conditionMode?: DelayConditionMode;
 }
 
 // ============================================================================
@@ -322,6 +339,45 @@ export interface AppReadyEvent {
   status: string;
 }
 
+export interface UpdateCheckResultEvent {
+  kind: UpdateResponseKind;
+  error?: string;
+  message?: string;
+  statusCode?: number;
+  version?: string;
+  bundle: BundleInfo;
+}
+
+export interface SetEvent {
+  bundle: BundleInfo;
+}
+
+export interface SetNextEvent {
+  bundle: BundleInfo;
+}
+
+export interface ChannelPrivateEvent {
+  channel: string;
+  message: string;
+}
+
+export type UpdaterEvent =
+  | { type: 'download'; data: DownloadEvent }
+  | { type: 'noNeedUpdate'; data: NoNeedEvent }
+  | { type: 'updateCheckResult'; data: UpdateCheckResultEvent }
+  | { type: 'updateAvailable'; data: UpdateAvailableEvent }
+  | { type: 'downloadComplete'; data: DownloadCompleteEvent }
+  | { type: 'downloadFailed'; data: DownloadFailedEvent }
+  | { type: 'breakingAvailable'; data: BreakingAvailableEvent }
+  | { type: 'updateFailed'; data: UpdateFailedEvent }
+  | { type: 'set'; data: SetEvent }
+  | { type: 'setNext'; data: SetNextEvent }
+  | { type: 'appReloaded'; data: Record<string, never> }
+  | { type: 'appReady'; data: AppReadyEvent }
+  | { type: 'channelPrivate'; data: ChannelPrivateEvent };
+
+export type UpdaterEventType = UpdaterEvent['type'];
+
 // ============================================================================
 // Listener Types
 // ============================================================================
@@ -336,7 +392,12 @@ export type UpdaterEventName =
   | 'majorAvailable'
   | 'updateFailed'
   | 'appReloaded'
-  | 'appReady';
+  | 'appReady'
+  | 'updaterEvent'
+  | 'updateCheckResult'
+  | 'set'
+  | 'setNext'
+  | 'channelPrivate';
 
 export interface ListenerHandle {
   /** Remove this listener */
@@ -351,14 +412,35 @@ export type UpdaterEventCallback<T> = (event: T) => void;
 
 export type DirectUpdateMode = boolean | 'atInstall' | 'onLaunch' | 'always';
 
+export type AutoUpdateMode =
+  | 'off'
+  | 'atBackground'
+  | 'atInstall'
+  | 'onLaunch'
+  | 'always'
+  | 'onlyDownload';
+
+export type AutoUpdateSetting = boolean | AutoUpdateMode;
+
+export type ResolvedAutoUpdateMode = AutoUpdateMode | 'off';
+
+export interface NativeUpdatePromptConfig {
+  enabled: boolean;
+  title?: string;
+  message?: string;
+  updateButton?: string;
+  laterButton?: string;
+  cooldownHours?: number;
+}
+
 export interface ElectronUpdaterConfig {
   // Core Settings
   /** Milliseconds before update considered failed (default: 10000) */
   appReadyTimeout?: number;
   /** Seconds for API request timeout (default: 20) */
   responseTimeout?: number;
-  /** Enable automatic updates (default: true) */
-  autoUpdate?: boolean;
+  /** Enable automatic updates (default: true, same as atBackground) */
+  autoUpdate?: AutoUpdateSetting;
   /** Auto-delete failed bundles (default: true) */
   autoDeleteFailed?: boolean;
   /** Auto-delete previous bundles (default: true) */
@@ -377,6 +459,10 @@ export interface ElectronUpdaterConfig {
   // Security
   /** Public key for E2E encryption */
   publicKey?: string;
+  /** Allow HTTPS to HTTP redirects for updater network calls (default: false) */
+  allowHttpsToHttpRedirect?: boolean;
+  /** Allow unsetChannel when allowSetDefaultChannel is false (default: true) */
+  allowSetDefaultChannel?: boolean;
 
   // Version Management
   /** Override builtin version */
@@ -413,6 +499,13 @@ export interface ElectronUpdaterConfig {
   disableJSLogging?: boolean;
   /** Enable debug menu (default: false) */
   debugMenu?: boolean;
+  /** Show a native dialog when a store or native update is required */
+  nativeUpdatePrompt?: boolean | NativeUpdatePromptConfig;
+  nativeUpdatePromptTitle?: string;
+  nativeUpdatePromptMessage?: string;
+  nativeUpdatePromptUpdateButton?: string;
+  nativeUpdatePromptLaterButton?: string;
+  nativeUpdatePromptCooldownHours?: number;
 
   // Periodic Updates
   /** Auto-check interval in seconds (0 to disable, min 600) */
@@ -452,6 +545,8 @@ export interface BundleManifest {
   failedUpdate: UpdateFailedEvent | null;
   /** Delay conditions */
   delayConditions: DelayCondition[];
+  /** How delay conditions are combined */
+  delayConditionMode?: DelayConditionMode;
   /** Custom ID */
   customId: string | null;
   /** Current channel */
@@ -463,6 +558,13 @@ export interface StorageData {
   deviceId: string;
   /** Bundle manifest */
   manifest: BundleManifest;
+  /** Per native build version, last native update prompt timestamp */
+  nativeUpdatePromptShownAt?: Record<string, number>;
+  /** Tracks native build for onLaunch/atInstall auto update */
+  autoUpdateRuntime?: {
+    storedNativeBuild?: string;
+    onLaunchCheckConsumed?: boolean;
+  };
   /** Dynamic update URL */
   updateUrl?: string;
   /** Dynamic stats URL */
@@ -524,4 +626,9 @@ export const IPC_CHANNELS = {
   EVENT_UPDATE_FAILED: 'electron-updater:event:updateFailed',
   EVENT_APP_RELOADED: 'electron-updater:event:appReloaded',
   EVENT_APP_READY: 'electron-updater:event:appReady',
+  EVENT_UPDATER_EVENT: 'electron-updater:event:updaterEvent',
+  EVENT_UPDATE_CHECK_RESULT: 'electron-updater:event:updateCheckResult',
+  EVENT_SET: 'electron-updater:event:set',
+  EVENT_SET_NEXT: 'electron-updater:event:setNext',
+  EVENT_CHANNEL_PRIVATE: 'electron-updater:event:channelPrivate',
 } as const;

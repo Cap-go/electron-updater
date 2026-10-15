@@ -230,6 +230,11 @@ function getEventChannel(event: UpdaterEventName): string {
     updateFailed: IPC_CHANNELS.EVENT_UPDATE_FAILED,
     appReloaded: IPC_CHANNELS.EVENT_APP_RELOADED,
     appReady: IPC_CHANNELS.EVENT_APP_READY,
+    updaterEvent: IPC_CHANNELS.EVENT_UPDATER_EVENT,
+    updateCheckResult: IPC_CHANNELS.EVENT_UPDATE_CHECK_RESULT,
+    set: IPC_CHANNELS.EVENT_SET,
+    setNext: IPC_CHANNELS.EVENT_SET_NEXT,
+    channelPrivate: IPC_CHANNELS.EVENT_CHANNEL_PRIVATE,
   };
 
   return channelMap[event];

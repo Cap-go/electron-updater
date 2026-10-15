@@ -28,6 +28,7 @@ export class DelayManager {
    */
   async setMultiDelay(options: MultiDelayConditions): Promise<void> {
     this.storage.setDelayConditions(options.delayConditions);
+    this.storage.setDelayConditionMode(options.conditionMode ?? 'and');
     await this.storage.save();
   }
 
@@ -56,13 +57,13 @@ export class DelayManager {
       return true;
     }
 
-    for (const condition of conditions) {
-      if (!this.isConditionSatisfied(condition)) {
-        return false;
-      }
+    const mode = this.storage.getDelayConditionMode();
+
+    if (mode === 'or') {
+      return conditions.some((condition) => this.isConditionSatisfied(condition));
     }
 
-    return true;
+    return conditions.every((condition) => this.isConditionSatisfied(condition));
   }
 
   /**

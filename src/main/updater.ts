@@ -47,9 +47,18 @@ import type {
   UpdaterEventCallback,
   ListenerHandle,
   DownloadEvent,
+  NativeUpdatePromptConfig,
+  UpdateResponseKind,
 } from '../shared/types';
 import { UpdaterEventEmitter } from '../shared/events';
 import { DEFAULT_CONFIG, PLUGIN_VERSION, MIN_PERIOD_CHECK_DELAY } from '../shared/constants';
+import {
+  isAutoUpdateChecksEnabled,
+  resolveAutoUpdateMode,
+  shouldApplyImmediately,
+  shouldAutoDownload,
+} from './auto-update-mode';
+import { NativeUpdatePromptManager } from './native-update-prompt';
 import { StorageManager } from './storage';
 import { CryptoManager } from './crypto';
 import { DownloadManager } from './download-manager';
@@ -97,6 +106,9 @@ export class ElectronUpdater {
   private periodCheckInterval: NodeJS.Timeout | null = null;
   private mainWindow: BrowserWindow | null = null;
   private builtinPath: string = '';
+  private reloadGeneration: number = 0;
+  private expectedNotifyGeneration: number = 0;
+  private nativeUpdatePromptManager: NativeUpdatePromptManager | null = null;
 
   constructor(config: ElectronUpdaterConfig = {}) {
     this.config = this.mergeConfig(config);
@@ -136,7 +148,60 @@ export class ElectronUpdater {
       localSupaAnon: config.localSupaAnon ?? '',
       localApi: config.localApi ?? '',
       localApiFiles: config.localApiFiles ?? '',
+      allowHttpsToHttpRedirect:
+        config.allowHttpsToHttpRedirect ?? DEFAULT_CONFIG.allowHttpsToHttpRedirect,
+      allowSetDefaultChannel: config.allowSetDefaultChannel ?? DEFAULT_CONFIG.allowSetDefaultChannel,
+      nativeUpdatePrompt: config.nativeUpdatePrompt ?? false,
+      nativeUpdatePromptTitle: config.nativeUpdatePromptTitle ?? '',
+      nativeUpdatePromptMessage: config.nativeUpdatePromptMessage ?? '',
+      nativeUpdatePromptUpdateButton: config.nativeUpdatePromptUpdateButton ?? '',
+      nativeUpdatePromptLaterButton: config.nativeUpdatePromptLaterButton ?? '',
+      nativeUpdatePromptCooldownHours: config.nativeUpdatePromptCooldownHours ?? 24,
     };
+  }
+
+  private buildNativeUpdatePromptConfig(): NativeUpdatePromptConfig {
+    const setting = this.config.nativeUpdatePrompt;
+    const enabled =
+      setting === true || (typeof setting === 'object' && setting !== null && setting.enabled);
+
+    const fromObject = typeof setting === 'object' && setting !== null ? setting : undefined;
+
+    return {
+      enabled: Boolean(enabled),
+      title: fromObject?.title ?? this.config.nativeUpdatePromptTitle ?? undefined,
+      message: fromObject?.message ?? this.config.nativeUpdatePromptMessage ?? undefined,
+      updateButton:
+        fromObject?.updateButton ?? this.config.nativeUpdatePromptUpdateButton ?? undefined,
+      laterButton: fromObject?.laterButton ?? this.config.nativeUpdatePromptLaterButton ?? undefined,
+      cooldownHours:
+        fromObject?.cooldownHours ?? this.config.nativeUpdatePromptCooldownHours ?? undefined,
+    };
+  }
+
+  private getAutoUpdateContext(): { isColdStart: boolean; isFreshNativeInstall: boolean } {
+    const runtime = this.storage.getAutoUpdateRuntime() ?? {};
+    const currentBuild = app.getVersion();
+    const isFreshNativeInstall = runtime.storedNativeBuild !== currentBuild;
+    const isColdStart = !runtime.onLaunchCheckConsumed;
+
+    if (isColdStart) {
+      this.storage.setAutoUpdateRuntime({
+        ...runtime,
+        onLaunchCheckConsumed: true,
+        storedNativeBuild: currentBuild,
+      });
+      void this.storage.save();
+    } else if (isFreshNativeInstall) {
+      this.storage.setAutoUpdateRuntime({
+        ...runtime,
+        storedNativeBuild: currentBuild,
+        onLaunchCheckConsumed: true,
+      });
+      void this.storage.save();
+    }
+
+    return { isColdStart, isFreshNativeInstall };
   }
 
   /**
@@ -176,7 +241,14 @@ export class ElectronUpdater {
     this.downloadManager = new DownloadManager(
       this.storage,
       this.crypto,
-      this.config.responseTimeout * 1000
+      this.config.responseTimeout * 1000,
+      this.config.allowHttpsToHttpRedirect
+    );
+
+    this.nativeUpdatePromptManager = new NativeUpdatePromptManager(
+      this.buildNativeUpdatePromptConfig(),
+      this.storage,
+      app.getVersion()
     );
 
     // Initialize bundle manager
@@ -203,7 +275,8 @@ export class ElectronUpdater {
       this.config.version,
       this.config.defaultChannel || undefined,
       this.generateKeyId(this.crypto.getPublicKey()),
-      this.config.responseTimeout * 1000
+      this.config.responseTimeout * 1000,
+      this.config.allowSetDefaultChannel
     );
 
     // Initialize stats manager
@@ -272,7 +345,7 @@ export class ElectronUpdater {
         await this.storage.save();
 
         // Emit reload event
-        this.eventEmitter.emit('appReloaded', undefined);
+        this.eventEmitter.emitUpdaterEvent({ type: 'appReloaded', data: {} });
 
         // Reload the window
         await this.reload();
@@ -285,7 +358,7 @@ export class ElectronUpdater {
       clearInterval(this.periodCheckInterval);
     }
 
-    if (this.config.periodCheckDelay >= MIN_PERIOD_CHECK_DELAY && this.config.autoUpdate) {
+    if (this.config.periodCheckDelay >= MIN_PERIOD_CHECK_DELAY && isAutoUpdateChecksEnabled(this.config.autoUpdate)) {
       this.periodCheckInterval = setInterval(
         () => this.checkForUpdates(),
         this.config.periodCheckDelay * 1000
@@ -294,32 +367,78 @@ export class ElectronUpdater {
   }
 
   private async checkForUpdates(): Promise<void> {
-    if (!this.config.autoUpdate) return;
+    if (!isAutoUpdateChecksEnabled(this.config.autoUpdate)) return;
+
+    const autoContext = this.getAutoUpdateContext();
 
     try {
       const latest = await this.getLatest();
 
-      if (latest.error === 'no_new_version_available') {
-        const current = await this.current();
-        this.eventEmitter.emit('noNeedUpdate', { bundle: current.bundle });
+      const current = await this.current();
+      const checkKind: UpdateResponseKind =
+        latest.kind ??
+        (latest.error === 'no_new_version_available'
+          ? 'up_to_date'
+          : latest.error
+            ? 'failed'
+            : 'up_to_date');
+
+      this.eventEmitter.emitUpdaterEvent({
+        type: 'updateCheckResult',
+        data: {
+          kind: checkKind,
+          error: latest.error,
+          message: latest.message,
+          statusCode: latest.statusCode,
+          version: latest.version,
+          bundle: current.bundle,
+        },
+      });
+
+      if (latest.error === 'no_new_version_available' || checkKind === 'up_to_date') {
+        this.eventEmitter.emitUpdaterEvent({
+          type: 'noNeedUpdate',
+          data: { bundle: current.bundle },
+        });
+        return;
+      }
+
+      if (checkKind === 'failed' || latest.error) {
+        await this.statsManager.sendUpdateCheckError(latest.error ?? 'update_check_failed', {
+          error: latest.error,
+          statusCode: latest.statusCode,
+        });
         return;
       }
 
       if (latest.url && latest.version) {
-        this.eventEmitter.emit('updateAvailable', {
-          bundle: {
-            id: '',
-            version: latest.version,
-            downloaded: '',
-            checksum: latest.checksum ?? '',
-            status: 'pending',
-          },
+        const pendingBundle = {
+          id: '',
+          version: latest.version,
+          downloaded: '',
+          checksum: latest.checksum ?? '',
+          status: 'pending' as const,
+        };
+
+        this.eventEmitter.emitUpdaterEvent({
+          type: 'updateAvailable',
+          data: { bundle: pendingBundle },
         });
 
         // Handle breaking changes
-        if (latest.breaking) {
-          this.eventEmitter.emit('breakingAvailable', { version: latest.version });
-          this.eventEmitter.emit('majorAvailable', { version: latest.version });
+        if (latest.breaking || latest.major) {
+          this.eventEmitter.emitUpdaterEvent({
+            type: 'breakingAvailable',
+            data: { version: latest.version },
+          });
+          await this.nativeUpdatePromptManager?.maybePrompt(
+            latest.message ?? 'A native app update is required.',
+            latest.link
+          );
+          return;
+        }
+
+        if (!shouldAutoDownload(this.config.autoUpdate)) {
           return;
         }
 
@@ -332,28 +451,40 @@ export class ElectronUpdater {
           manifest: latest.manifest,
         });
 
-        this.eventEmitter.emit('downloadComplete', { bundle });
+        this.eventEmitter.emitUpdaterEvent({
+          type: 'downloadComplete',
+          data: { bundle },
+        });
 
-        // Set as next or apply directly based on directUpdate mode
-        if (this.shouldDirectUpdate()) {
+        const applyNow =
+          shouldApplyImmediately(this.config.autoUpdate, autoContext) ||
+          this.shouldDirectUpdate(autoContext);
+
+        if (applyNow) {
           await this.set({ id: bundle.id });
-        } else {
+        } else if (resolveAutoUpdateMode(this.config.autoUpdate) !== 'onlyDownload') {
           await this.next({ id: bundle.id });
         }
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await this.statsManager.sendUpdateCheckError(message);
       if (!this.config.disableJSLogging) {
         console.error('[ElectronUpdater] Auto-update check failed:', error);
       }
     }
   }
 
-  private shouldDirectUpdate(): boolean {
+  private shouldDirectUpdate(context: { isColdStart: boolean; isFreshNativeInstall: boolean }): boolean {
     if (this.config.directUpdate === true || this.config.directUpdate === 'always') {
       return true;
     }
-    // For 'atInstall' and 'onLaunch', we'd need to track app state
-    // For simplicity, treat them as false for now
+    if (this.config.directUpdate === 'atInstall' && context.isFreshNativeInstall) {
+      return true;
+    }
+    if (this.config.directUpdate === 'onLaunch' && context.isColdStart) {
+      return true;
+    }
     return false;
   }
 
@@ -375,6 +506,11 @@ export class ElectronUpdater {
    * Notify that app is ready - must be called on every launch
    */
   async notifyAppReady(): Promise<AppReadyResult> {
+    if (this.reloadGeneration !== this.expectedNotifyGeneration) {
+      const current = await this.current();
+      return { bundle: current.bundle };
+    }
+
     if (this.appReadyTimeout) {
       clearTimeout(this.appReadyTimeout);
       this.appReadyTimeout = null;
@@ -389,9 +525,12 @@ export class ElectronUpdater {
     await this.statsManager.sendUpdateSuccess(current.bundle.version, current.bundle.id);
 
     // Emit event
-    this.eventEmitter.emit('appReady', {
-      bundle: current.bundle,
-      status: 'ok',
+    this.eventEmitter.emitUpdaterEvent({
+      type: 'appReady',
+      data: {
+        bundle: current.bundle,
+        status: 'ok',
+      },
     });
 
     return { bundle: current.bundle };
@@ -403,7 +542,7 @@ export class ElectronUpdater {
   async download(options: DownloadOptions): Promise<BundleInfo> {
     try {
       const bundle = await this.downloadManager.downloadBundle(options, (event: DownloadEvent) => {
-        this.eventEmitter.emit('download', event);
+        this.eventEmitter.emitUpdaterEvent({ type: 'download', data: event });
       });
 
       await this.statsManager.sendDownloadComplete(options.version, bundle.id);
@@ -412,7 +551,10 @@ export class ElectronUpdater {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       await this.statsManager.sendDownloadFailed(options.version, message);
-      this.eventEmitter.emit('downloadFailed', { version: options.version });
+      this.eventEmitter.emitUpdaterEvent({
+        type: 'downloadFailed',
+        data: { version: options.version },
+      });
       throw error;
     }
   }
@@ -421,14 +563,17 @@ export class ElectronUpdater {
    * Set next bundle to load
    */
   async next(options: BundleId): Promise<BundleInfo> {
-    return this.bundleManager.next(options);
+    const bundle = await this.bundleManager.next(options);
+    this.eventEmitter.emitUpdaterEvent({ type: 'setNext', data: { bundle } });
+    return bundle;
   }
 
   /**
    * Set current bundle and reload
    */
   async set(options: BundleId): Promise<void> {
-    await this.bundleManager.set(options);
+    const bundle = await this.bundleManager.set(options);
+    this.eventEmitter.emitUpdaterEvent({ type: 'set', data: { bundle } });
     await this.reload();
   }
 
@@ -438,37 +583,50 @@ export class ElectronUpdater {
   async reload(): Promise<void> {
     if (!this.mainWindow) return;
 
+    if (this.delayManager.areConditionsSatisfied()) {
+      await this.checkAndApplyPendingUpdate();
+    }
+
     const bundlePath = this.bundleManager.getCurrentBundlePath();
 
     // Start app ready timeout for rollback protection
     this.appReadyReceived = false;
+    this.expectedNotifyGeneration = ++this.reloadGeneration;
+
     this.appReadyTimeout = setTimeout(async () => {
       if (!this.appReadyReceived) {
         if (!this.config.disableJSLogging) {
           console.warn('[ElectronUpdater] App ready timeout - rolling back');
         }
 
-        const current = await this.current();
+        const failedBundle = (await this.current()).bundle;
         await this.statsManager.sendUpdateFailed(
-          current.bundle.version,
-          current.bundle.id,
+          failedBundle.version,
+          failedBundle.id,
           'App ready timeout'
         );
 
-        this.eventEmitter.emit('updateFailed', { bundle: current.bundle });
+        const rolledBack = await this.bundleManager.rollback();
+        this.reloadGeneration += 1;
+        this.expectedNotifyGeneration = this.reloadGeneration;
+
+        this.eventEmitter.emitUpdaterEvent({
+          type: 'updateFailed',
+          data: { bundle: failedBundle },
+        });
 
         // Reload with rolled back bundle
         if (this.config.loadUrl) {
           this.mainWindow?.loadURL(this.config.loadUrl);
         } else {
-          const newPath = this.bundleManager.getCurrentBundlePath();
+          const newPath = this.bundleManager.getBundlePath(rolledBack.id);
           this.mainWindow?.loadFile(newPath);
         }
       }
     }, this.config.appReadyTimeout);
 
     // Emit reload event
-    this.eventEmitter.emit('appReloaded', undefined);
+    this.eventEmitter.emitUpdaterEvent({ type: 'appReloaded', data: {} });
 
     // Load the bundle
     if (this.config.loadUrl) {
@@ -655,7 +813,7 @@ export class ElectronUpdater {
   async setChannel(options: SetChannelOptions): Promise<ChannelRes> {
     const result = await this.channelManager.setChannel(options);
 
-    if (options.triggerAutoUpdate && this.config.autoUpdate) {
+    if (options.triggerAutoUpdate && isAutoUpdateChecksEnabled(this.config.autoUpdate)) {
       this.checkForUpdates();
     }
 
@@ -720,7 +878,7 @@ export class ElectronUpdater {
    * Check if auto-update is enabled
    */
   async isAutoUpdateEnabled(): Promise<AutoUpdateEnabled> {
-    return { enabled: this.config.autoUpdate };
+    return { enabled: isAutoUpdateChecksEnabled(this.config.autoUpdate) };
   }
 
   /**

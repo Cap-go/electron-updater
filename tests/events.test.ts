@@ -213,6 +213,22 @@ describe('UpdaterEventEmitter', () => {
       expect(callback).toHaveBeenCalledWith({ bundle, status: 'success' });
     });
   });
+
+  describe('emitUpdaterEvent', () => {
+    it('should forward legacy and unified listeners', () => {
+      const legacy = vi.fn();
+      const unified = vi.fn();
+      const bundle = createMockBundle();
+
+      emitter.addListener('noNeedUpdate', legacy);
+      emitter.addListener('updaterEvent', unified);
+
+      emitter.emitUpdaterEvent({ type: 'noNeedUpdate', data: { bundle } });
+
+      expect(legacy).toHaveBeenCalledWith({ bundle });
+      expect(unified).toHaveBeenCalledWith({ type: 'noNeedUpdate', data: { bundle } });
+    });
+  });
 });
 
 function createMockBundle() {

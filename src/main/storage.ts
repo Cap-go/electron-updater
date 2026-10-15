@@ -13,7 +13,15 @@ import { app, safeStorage } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import type { StorageData, BundleManifest, BundleInfo, DelayCondition, UpdateFailedEvent } from '../shared/types';
+import type {
+  StorageData,
+  BundleManifest,
+  BundleInfo,
+  DelayCondition,
+  UpdateFailedEvent,
+  DelayConditionMode,
+} from '../shared/types';
+import { assertSafeBundleId } from './path-security';
 import { BUNDLES_DIR, STORAGE_FILE, BUILTIN_BUNDLE_ID } from '../shared/constants';
 
 export class StorageManager {
@@ -77,6 +85,7 @@ export class StorageManager {
       lastSuccessfulBundleId: null,
       failedUpdate: null,
       delayConditions: [],
+      delayConditionMode: 'and',
       customId: null,
       channel: null,
     };
@@ -111,6 +120,7 @@ export class StorageManager {
   }
 
   getBundlePath(bundleId: string): string {
+    assertSafeBundleId(bundleId);
     return path.join(this.bundlesPath, bundleId);
   }
 
@@ -207,6 +217,41 @@ export class StorageManager {
 
   clearDelayConditions(): void {
     this.setDelayConditions([]);
+    this.setDelayConditionMode('and');
+  }
+
+  getDelayConditionMode(): DelayConditionMode {
+    return this.data?.manifest.delayConditionMode ?? 'and';
+  }
+
+  setDelayConditionMode(mode: DelayConditionMode): void {
+    if (this.data) {
+      this.data.manifest.delayConditionMode = mode;
+    }
+  }
+
+  getNativeUpdatePromptShownAt(nativeVersion: string): number | undefined {
+    return this.data?.nativeUpdatePromptShownAt?.[nativeVersion];
+  }
+
+  setNativeUpdatePromptShownAt(nativeVersion: string, timestamp: number): void {
+    if (!this.data) {
+      return;
+    }
+    if (!this.data.nativeUpdatePromptShownAt) {
+      this.data.nativeUpdatePromptShownAt = {};
+    }
+    this.data.nativeUpdatePromptShownAt[nativeVersion] = timestamp;
+  }
+
+  getAutoUpdateRuntime(): StorageData['autoUpdateRuntime'] {
+    return this.data?.autoUpdateRuntime;
+  }
+
+  setAutoUpdateRuntime(runtime: StorageData['autoUpdateRuntime']): void {
+    if (this.data) {
+      this.data.autoUpdateRuntime = runtime;
+    }
   }
 
   // Custom ID
@@ -284,6 +329,7 @@ export class StorageManager {
   }
 
   async deleteBundleFiles(bundleId: string): Promise<void> {
+    assertSafeBundleId(bundleId);
     const bundlePath = this.getBundlePath(bundleId);
     try {
       await fs.promises.rm(bundlePath, { recursive: true, force: true });
