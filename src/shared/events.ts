@@ -20,6 +20,11 @@ import type {
   BreakingAvailableEvent,
   UpdateFailedEvent,
   AppReadyEvent,
+  UpdaterEvent,
+  UpdateCheckResultEvent,
+  SetEvent,
+  SetNextEvent,
+  ChannelPrivateEvent,
 } from './types';
 
 type EventMap = {
@@ -33,6 +38,11 @@ type EventMap = {
   updateFailed: UpdateFailedEvent;
   appReloaded: void;
   appReady: AppReadyEvent;
+  updaterEvent: UpdaterEvent;
+  updateCheckResult: UpdateCheckResultEvent;
+  set: SetEvent;
+  setNext: SetNextEvent;
+  channelPrivate: ChannelPrivateEvent;
 };
 
 export class UpdaterEventEmitter {
@@ -64,6 +74,58 @@ export class UpdaterEventEmitter {
           console.error(`Error in ${event} listener:`, error);
         }
       });
+    }
+  }
+
+  /**
+   * Emit a legacy event and the unified updaterEvent payload.
+   */
+  emitUpdaterEvent(event: UpdaterEvent): void {
+    this.emit('updaterEvent', event);
+
+    switch (event.type) {
+      case 'download':
+        this.emit('download', event.data);
+        break;
+      case 'noNeedUpdate':
+        this.emit('noNeedUpdate', event.data);
+        break;
+      case 'updateCheckResult':
+        this.emit('updateCheckResult', event.data);
+        break;
+      case 'updateAvailable':
+        this.emit('updateAvailable', event.data);
+        break;
+      case 'downloadComplete':
+        this.emit('downloadComplete', event.data);
+        break;
+      case 'downloadFailed':
+        this.emit('downloadFailed', event.data);
+        break;
+      case 'breakingAvailable':
+        this.emit('breakingAvailable', event.data);
+        this.emit('majorAvailable', event.data);
+        break;
+      case 'updateFailed':
+        this.emit('updateFailed', event.data);
+        break;
+      case 'set':
+        this.emit('set', event.data);
+        break;
+      case 'setNext':
+        this.emit('setNext', event.data);
+        break;
+      case 'appReloaded':
+        this.emit('appReloaded', undefined);
+        break;
+      case 'appReady':
+        this.emit('appReady', event.data);
+        break;
+      case 'channelPrivate':
+        this.emit('channelPrivate', event.data);
+        break;
+      default:
+        break;
     }
   }
 

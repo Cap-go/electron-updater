@@ -8,7 +8,7 @@
  * Electron Updater Constants
  */
 
-export const PLUGIN_VERSION = '0.0.1';
+export const PLUGIN_VERSION = '0.0.8';
 
 export const DEFAULT_CONFIG = {
   appReadyTimeout: 10000,
@@ -30,6 +30,8 @@ export const DEFAULT_CONFIG = {
   disableJSLogging: false,
   debugMenu: false,
   periodCheckDelay: 0,
+  allowHttpsToHttpRedirect: false,
+  allowSetDefaultChannel: true,
 } as const;
 
 export const BUILTIN_BUNDLE_ID = 'builtin';
@@ -47,4 +49,5 @@ export const STATS_EVENTS = {
   DOWNLOAD_FAILED: 'download_fail',
   UPDATE_SUCCESS: 'set',
   UPDATE_FAILED: 'set_fail',
+  UPDATE_CHECK_ERROR: 'update_check_error',
 } as const;

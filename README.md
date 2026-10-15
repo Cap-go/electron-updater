@@ -34,7 +34,7 @@ Perfect for fixing bugs immediately, A/B testing features, and maintaining contr
 - 🔄 **Auto-Update** - Automatic update checking and installation
 - 🛡️ **Rollback Protection** - Automatic rollback if update fails
 - 📦 **Bundle Management** - Full control over downloaded bundles
-- 🔐 **End-to-End Encryption** - Secure update delivery
+- 🔐 **End-to-End Encryption** - Secure update delivery; encrypted bundles stay unreadable by Capgo
 - 📊 **Channel System** - Deploy to different user groups
 - ⏱️ **Delay Conditions** - Control when updates are applied
 - 🐛 **Debug Menu** - Built-in debug tools for development

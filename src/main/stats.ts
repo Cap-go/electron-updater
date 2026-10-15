@@ -105,6 +105,27 @@ export class StatsManager {
   }
 
   /**
+   * Failed background update check (network, timeout, non-2xx, unreadable payload).
+   */
+  async sendUpdateCheckError(
+    message: string,
+    metadata?: { statusCode?: number; error?: string }
+  ): Promise<void> {
+    const parts = [message];
+    if (metadata?.statusCode !== undefined) {
+      parts.push(`status ${metadata.statusCode}`);
+    }
+    if (metadata?.error && metadata.error !== message) {
+      parts.push(metadata.error);
+    }
+    await this.sendEvent({
+      event: STATS_EVENTS.UPDATE_CHECK_ERROR,
+      version: this.getCurrentBundleVersion(),
+      message: parts.join('; '),
+    });
+  }
+
+  /**
    * Send update success event
    */
   async sendUpdateSuccess(version: string, bundleId: string): Promise<void> {

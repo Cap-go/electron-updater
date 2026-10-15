@@ -191,6 +191,26 @@ describe('CryptoManager', () => {
     });
   });
 
+  describe('parseSessionKey', () => {
+    it('should reject IVs that are not 16 bytes', () => {
+      cryptoManager.setPublicKey(`-----BEGIN RSA PUBLIC KEY-----
+MIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw
+7onLRbkR7+16s9G/RrJ6XJkSYBwxWp9BwdwxWin5X5w3dEk+v8q8G+8Nyp674ND
+pHBSp8Nxtmh51mVp7Xo5fISa1kK/WTBE1wN5R5XW7+6lXF1UZXP5/JM5YwpsW1l
+aH9f1LQU8pW0u/MdSS2cZSJd/0CzMuk7B50XJKw2yzTPEPh5oAgNqdyZ9jNx8Z9
+p+RW4c6p5+27ibHrOpgVIt0MD6rkOrvmRcJBBp0XFfK4EwRZeyr6fKMBLkud7lH0
+pw/E0mVXhcZzMmYvkfMgauHmnM99/+VHPu7ucMCq7x2hlxvF4HGbDV7jcy6gtyc4
+xE2RYo+1bDCvoGZHSm0dAt3FY99xdYb2dM/VZ9iQQ3v+UwZQIDAQAB
+-----END RSA PUBLIC KEY-----`);
+
+      const shortIv = Buffer.alloc(8).toString('base64');
+      const fakeKey = Buffer.alloc(16).toString('base64');
+      const result = cryptoManager.parseSessionKey(`${shortIv}:${fakeKey}`);
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('AES decryption', () => {
     it('should decrypt content correctly with valid key and IV', () => {
       // Create test encryption

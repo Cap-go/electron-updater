@@ -17,6 +17,7 @@ import extractZip from 'extract-zip';
 import type { DownloadOptions, BundleInfo, ManifestEntry, DownloadEvent } from '../shared/types';
 import type { StorageManager } from './storage';
 import type { CryptoManager } from './crypto';
+import { assertSafeBundleId, isHttpsToHttpRedirect, isPathWithinRoot } from './path-security';
 
 export interface DownloadProgress {
   percent: number;
@@ -30,38 +31,26 @@ export class DownloadManager {
   private storage: StorageManager;
   private crypto: CryptoManager;
   private timeout: number;
+  private allowHttpsToHttpRedirect: boolean;
 
-  constructor(storage: StorageManager, crypto: CryptoManager, timeout: number = 20000) {
+  constructor(
+    storage: StorageManager,
+    crypto: CryptoManager,
+    timeout: number = 20000,
+    allowHttpsToHttpRedirect: boolean = false
+  ) {
     this.storage = storage;
     this.crypto = crypto;
     this.timeout = timeout;
+    this.allowHttpsToHttpRedirect = allowHttpsToHttpRedirect;
+  }
+
+  setAllowHttpsToHttpRedirect(allow: boolean): void {
+    this.allowHttpsToHttpRedirect = allow;
   }
 
   setTimeout(timeout: number): void {
     this.timeout = timeout;
-  }
-
-  /**
-   * Validate that a path is within the allowed directory (path traversal prevention)
-   * This is a critical security check to prevent zip slip attacks
-   */
-  private isPathSafe(filePath: string, allowedDir: string): boolean {
-    const normalizedPath = path.normalize(filePath);
-    const normalizedAllowedDir = path.normalize(allowedDir);
-
-    // Ensure the path starts with the allowed directory
-    if (!normalizedPath.startsWith(normalizedAllowedDir + path.sep) &&
-        normalizedPath !== normalizedAllowedDir) {
-      return false;
-    }
-
-    // Check for path traversal patterns (.. as a path segment)
-    const segments = filePath.split(path.sep);
-    if (segments.some(segment => segment === '..')) {
-      return false;
-    }
-
-    return true;
   }
 
   /**
@@ -72,6 +61,7 @@ export class DownloadManager {
     onProgress?: (event: DownloadEvent) => void
   ): Promise<BundleInfo> {
     const bundleId = this.crypto.generateBundleId();
+    assertSafeBundleId(bundleId);
     const bundlePath = this.storage.getBundlePath(bundleId);
     const zipPath = path.join(bundlePath, 'bundle.zip');
 
@@ -124,6 +114,12 @@ export class DownloadManager {
         bundleInfo.checksum = await this.crypto.calculateFileChecksum(zipPath);
       }
 
+      const encryptionRequired = Boolean(this.crypto.getPublicKey());
+
+      if (encryptionRequired && !options.sessionKey) {
+        throw new Error('sessionKey is required when publicKey is configured');
+      }
+
       // Decrypt if session key provided
       if (options.sessionKey) {
         const success = await this.crypto.decryptFile(zipPath, options.sessionKey);
@@ -141,6 +137,9 @@ export class DownloadManager {
 
       // Handle manifest for partial updates
       if (options.manifest && options.manifest.length > 0) {
+        if (encryptionRequired && !options.sessionKey) {
+          throw new Error('sessionKey is required for encrypted manifest updates');
+        }
         await this.downloadManifestFiles(
           options.manifest,
           extractPath,
@@ -186,13 +185,18 @@ export class DownloadManager {
         // Security check: prevent path traversal (zip slip attack)
         const entryPath = path.join(extractPath, entry.fileName);
 
-        if (!this.isPathSafe(entryPath, extractPath)) {
+        if (!isPathWithinRoot(entryPath, extractPath)) {
           throw new Error(`Zip entry has invalid path: ${entry.fileName}`);
         }
 
         // Reject entries with absolute paths
         if (path.isAbsolute(entry.fileName)) {
           throw new Error(`Zip entry has absolute path: ${entry.fileName}`);
+        }
+
+        const mode = (entry as { mode?: number }).mode;
+        if (mode !== undefined && (mode & 0o170000) === 0o120000) {
+          throw new Error(`Zip entry is a symlink: ${entry.fileName}`);
         }
       },
     });
@@ -201,14 +205,27 @@ export class DownloadManager {
   /**
    * Download a file from URL
    */
-  private downloadFile(url: string, destPath: string, onProgress?: ProgressCallback): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const protocol = url.startsWith('https') ? https : http;
+  private downloadFile(
+    url: string,
+    destPath: string,
+    onProgress?: ProgressCallback,
+    originalUrl?: string
+  ): Promise<void> {
+    const requestUrl = url;
+    const sourceUrl = originalUrl ?? url;
 
-      const request = protocol.get(url, { timeout: this.timeout }, (response) => {
+    return new Promise((resolve, reject) => {
+      const protocol = requestUrl.startsWith('https') ? https : http;
+
+      const request = protocol.get(requestUrl, { timeout: this.timeout }, (response) => {
         // Handle redirects
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          this.downloadFile(response.headers.location, destPath, onProgress)
+          const redirectUrl = new URL(response.headers.location, requestUrl).toString();
+          if (!this.allowHttpsToHttpRedirect && isHttpsToHttpRedirect(sourceUrl, redirectUrl)) {
+            reject(new Error('HTTPS to HTTP redirect is not allowed'));
+            return;
+          }
+          this.downloadFile(redirectUrl, destPath, onProgress, sourceUrl)
             .then(resolve)
             .catch(reject);
           return;
@@ -259,14 +276,22 @@ export class DownloadManager {
   /**
    * Download a file and return as Buffer
    */
-  private downloadToBuffer(url: string): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const protocol = url.startsWith('https') ? https : http;
+  private downloadToBuffer(url: string, originalUrl?: string): Promise<Buffer> {
+    const requestUrl = url;
+    const sourceUrl = originalUrl ?? url;
 
-      const request = protocol.get(url, { timeout: this.timeout }, (response) => {
+    return new Promise((resolve, reject) => {
+      const protocol = requestUrl.startsWith('https') ? https : http;
+
+      const request = protocol.get(requestUrl, { timeout: this.timeout }, (response) => {
         // Handle redirects
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          this.downloadToBuffer(response.headers.location)
+          const redirectUrl = new URL(response.headers.location, requestUrl).toString();
+          if (!this.allowHttpsToHttpRedirect && isHttpsToHttpRedirect(sourceUrl, redirectUrl)) {
+            reject(new Error('HTTPS to HTTP redirect is not allowed'));
+            return;
+          }
+          this.downloadToBuffer(redirectUrl, sourceUrl)
             .then(resolve)
             .catch(reject);
           return;
@@ -317,7 +342,7 @@ export class DownloadManager {
       const filePath = path.join(destPath, entry.file_name);
 
       // Security check: prevent path traversal
-      if (!this.isPathSafe(filePath, destPath)) {
+      if (!isPathWithinRoot(filePath, destPath)) {
         throw new Error(`Manifest entry has invalid path: ${entry.file_name}`);
       }
 
@@ -325,6 +350,17 @@ export class DownloadManager {
 
       // Ensure directory exists
       await fs.promises.mkdir(fileDir, { recursive: true });
+
+      try {
+        const existing = await fs.promises.lstat(filePath);
+        if (existing.isSymbolicLink()) {
+          throw new Error(`Manifest entry resolves to a symlink: ${entry.file_name}`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
 
       // Check if file already exists in cache (builtin bundle)
       // This implements caching similar to capacitor-updater

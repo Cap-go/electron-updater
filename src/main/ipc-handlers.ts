@@ -197,6 +197,26 @@ export function setupEventForwarding(updater: ElectronUpdater, window: BrowserWi
   updater.addListener('appReady', (event) => {
     window.webContents.send(IPC_CHANNELS.EVENT_APP_READY, event);
   });
+
+  updater.addListener('updaterEvent', (event) => {
+    window.webContents.send(IPC_CHANNELS.EVENT_UPDATER_EVENT, event);
+  });
+
+  updater.addListener('updateCheckResult', (event) => {
+    window.webContents.send(IPC_CHANNELS.EVENT_UPDATE_CHECK_RESULT, event);
+  });
+
+  updater.addListener('set', (event) => {
+    window.webContents.send(IPC_CHANNELS.EVENT_SET, event);
+  });
+
+  updater.addListener('setNext', (event) => {
+    window.webContents.send(IPC_CHANNELS.EVENT_SET_NEXT, event);
+  });
+
+  updater.addListener('channelPrivate', (event) => {
+    window.webContents.send(IPC_CHANNELS.EVENT_CHANNEL_PRIVATE, event);
+  });
 }
 
 /**
